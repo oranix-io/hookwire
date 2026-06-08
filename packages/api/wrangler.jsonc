@@ -10,5 +10,11 @@
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["ChannelDO"] }
-  ]
+  ],
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "invocation_logs": true
+    }
+  }
 }
