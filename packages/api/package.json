@@ -1,0 +1,26 @@
+{
+  "name": "@hookwire/api",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "build": "vite build",
+    "deploy": "npm run build && wrangler deploy",
+    "cf-typegen": "wrangler types --env-interface CloudflareBindings",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/zod-openapi": "^1.4.0",
+    "@hookwire/types": "*",
+    "hono": "^4.12.24",
+    "zod": "^4.4.0"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.2.3",
+    "@cloudflare/workers-types": "^4.20260608.1",
+    "typescript": "^6.0.3",
+    "vite": "^6.3.5",
+    "vite-ssr-components": "^0.6.1",
+    "wrangler": "^4.17.0"
+  }
+}

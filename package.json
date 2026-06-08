@@ -1,20 +1,14 @@
 {
   "name": "hookwire",
-  "type": "module",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "$npm_execpath run build && vite preview",
-    "deploy": "$npm_execpath run build && wrangler deploy",
-    "cf-typegen": "wrangler types --env-interface CloudflareBindings"
-  },
-  "dependencies": {
-    "hono": "^4.12.24"
-  },
-  "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.2.3",
-    "vite": "^6.3.5",
-    "vite-ssr-components": "^0.6.1",
-    "wrangler": "^4.17.0"
+    "dev": "npm run dev -w @hookwire/api",
+    "build": "npm run build -w @hookwire/api",
+    "deploy": "npm run deploy -w @hookwire/api",
+    "typecheck": "npm run typecheck -w @hookwire/types && npm run typecheck -w @hookwire/sdk && npm run typecheck -w @hookwire/api",
+    "cf-typegen": "npm run cf-typegen -w @hookwire/api"
   }
 }
