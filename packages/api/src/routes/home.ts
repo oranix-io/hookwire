@@ -75,8 +75,9 @@ home.get('/', (c) => {
   <div class="links">
     <a href="/docs">API Docs</a>
     <a href="/sdk">SDK</a>
-    <a href="/docs/openapi.json">OpenAPI Spec</a>
+    <a href="/docs/openapi.json">OpenAPI</a>
     <a href="/health">Status</a>
+    <a href="https://github.com/oranix-io/hookwire">GitHub</a>
   </div>
   <div class="tos" style="font-size:.75rem;color:#cbd5e1"><span class="dot"></span> v0.1</div>
 </div>

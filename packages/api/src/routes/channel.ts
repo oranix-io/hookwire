@@ -66,6 +66,11 @@ channelPage.get('/:name', (c) => {
   </div>
 
   <div id="events"></div>
+
+  <div style="text-align:center;margin-top:3rem;padding-top:1.5rem;border-top:1px solid #e2e8f0;font-size:.78rem;color:#94a3b8">
+    <a href="/" style="color:#94a3b8;text-decoration:none">Hookwire</a> ·
+    <a href="https://github.com/oranix-io/hookwire" style="color:#94a3b8;text-decoration:none">GitHub</a>
+  </div>
 </div>
 
 <script>

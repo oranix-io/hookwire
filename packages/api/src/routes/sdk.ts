@@ -111,7 +111,8 @@ es.<span class="fn">onmessage</span> = (<span class="kw">event</span>) => {
 
   <p style="margin-top:3rem;font-size:.8rem;color:#94a3b8">
     <a href="/docs" style="color:#6366f1">API Docs</a> ·
-    <a href="/" style="color:#6366f1">Home</a>
+    <a href="/" style="color:#6366f1">Home</a> ·
+    <a href="https://github.com/oranix-io/hookwire" style="color:#6366f1">GitHub</a>
   </p>
 </div>
 </body>
