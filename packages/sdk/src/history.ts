@@ -1,45 +1,20 @@
-import type { EventsResponse } from '@hookwire/types';
+import type { ChannelEvent } from '@hookwire/types';
 
-interface HistoryParams {
+interface EventsResponse { ok: true; channel: string; events: ChannelEvent[]; }
+
+interface HistoryOpts {
   baseUrl: string;
   channelName: string;
-  clientToken: string;
   limit?: number;
   afterSeq?: number;
-  includeBody?: boolean;
 }
 
-export async function fetchHistory(params: HistoryParams): Promise<EventsResponse> {
-  const url = new URL(`${params.baseUrl}/v1/channels/${params.channelName}/events`);
-  if (params.limit) url.searchParams.set('limit', String(params.limit));
-  if (params.afterSeq !== undefined) url.searchParams.set('after_seq', String(params.afterSeq));
-  if (params.includeBody !== undefined) url.searchParams.set('include_body', String(params.includeBody));
+export async function fetchHistory(opts: HistoryOpts): Promise<EventsResponse> {
+  const url = new URL(`${opts.baseUrl}/ch/${opts.channelName}/events`);
+  if (opts.limit) url.searchParams.set('limit', String(opts.limit));
+  if (opts.afterSeq !== undefined) url.searchParams.set('after_seq', String(opts.afterSeq));
 
-  const res = await fetch(url.toString(), {
-    headers: { Authorization: `Bearer ${params.clientToken}` },
-  });
-
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({}));
-    throw new Error(`Failed to fetch history: ${error?.error?.message ?? res.statusText}`);
-  }
-
-  return res.json();
-}
-
-export async function fetchChannel(params: {
-  baseUrl: string;
-  channelName: string;
-  clientToken: string;
-}): Promise<unknown> {
-  const res = await fetch(`${params.baseUrl}/v1/channels/${params.channelName}`, {
-    headers: { Authorization: `Bearer ${params.clientToken}` },
-  });
-
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({}));
-    throw new Error(`Failed to fetch channel: ${error?.error?.message ?? res.statusText}`);
-  }
-
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error(`History fetch failed: ${res.status}`);
   return res.json();
 }

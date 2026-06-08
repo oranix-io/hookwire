@@ -3,9 +3,7 @@
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "./src",
-    "jsx": "react-jsx",
-    "jsxImportSource": "hono/jsx",
-    "types": ["@cloudflare/workers-types/experimental", "vite/client"]
+    "types": ["@cloudflare/workers-types/experimental"]
   },
   "include": ["src"]
 }

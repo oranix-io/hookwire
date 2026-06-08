@@ -1,56 +1,39 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { channelRoutes } from './routes/channels.js';
 import { ingestRoute } from './routes/ingest.js';
 import { eventRoutes } from './routes/events.js';
-import { openApiApp, scalarDocs } from './routes/openapi.js';
-import { frontend } from './routes/frontend.jsx';
+import { channelPage } from './routes/channel.js';
+import { home } from './routes/home.js';
+import { sdkPage } from './routes/sdk.js';
+import { openApiApp, scalarDocs } from './routes/docs.js';
 import { errorHandler } from './middleware/error.js';
 import { ChannelDO } from './channel-do.js';
 
-type Bindings = {
-  DB: D1Database;
-  CHANNEL_DO: DurableObjectNamespace;
-};
+type Bindings = { CHANNEL_DO: DurableObjectNamespace };
 
-// ---------------------------------------------------------------------------
-// App factory — exported for testing
-// ---------------------------------------------------------------------------
 export function createApp(): Hono<{ Bindings: Bindings }> {
   const app = new Hono<{ Bindings: Bindings }>();
 
-  // Global middleware
   app.use('*', cors());
   app.use('*', errorHandler);
 
-  // Health check
-  app.get('/health', (c) => {
-    return c.json({ ok: true, service: 'hookwire-api', version: '0.1.0' });
-  });
+  app.get('/health', (c) => c.json({ ok: true, service: 'hookwire-api', version: '0.1.0' }));
 
-  // OpenAPI JSON spec at /docs/openapi.json
+  // API docs
   app.route('/docs', openApiApp);
-
-  // Scalar API Reference UI at /docs
   app.get('/docs', scalarDocs);
 
-  // API route groups
-  app.route('/v1/channels', channelRoutes);
-  app.route('/in', ingestRoute);
-  app.route('/v1/channels', eventRoutes);
+  // Core routes — order matters: specific GET routes before catch-all ingest
+  app.route('/ch', eventRoutes);      // GET/DELETE /ch/:name/events, /ch/:name/ws
+  app.route('/ch', channelPage);      // GET /ch/:name   (HTML viewer)
+  app.route('/ch', ingestRoute);      // ANY /ch/:name   (fallback: webhook ingest)
 
-  // React SSR frontend at /
-  app.route('/', frontend);
+  // Pages
+  app.route('/', home);
+  app.route('/sdk', sdkPage);               // GET /
 
   return app;
 }
 
-// ---------------------------------------------------------------------------
-// Worker entry point (default export)
-// ---------------------------------------------------------------------------
 export default createApp();
-
-// ---------------------------------------------------------------------------
-// Durable Object binding
-// ---------------------------------------------------------------------------
 export { ChannelDO };

@@ -1,181 +1,103 @@
-import { beforeEach } from 'vitest';
-import { hashToken } from '../lib/token.js';
+import { createApp } from '../index.js';
 
-// ---------------------------------------------------------------------------
-// In-memory D1 mock — matches the real D1 interface closely enough for tests
-// ---------------------------------------------------------------------------
-
-interface Row {
-  [key: string]: unknown;
-}
-
-class MockResult {
-  private rows: Row[];
-  constructor(rows: Row[]) { this.rows = rows; }
-  first(): Row | null { return this.rows[0] ?? null; }
-  all() { return { results: this.rows }; }
-}
-
-class MockPreparedStatement {
-  private sql: string;
-  private params: unknown[] = [];
-  private db: MockD1;
-
-  constructor(sql: string, db: MockD1) { this.sql = sql; this.db = db; }
-
-  bind(...p: unknown[]): this { this.params = p; return this; }
-
-  first(): Row | null {
-    if (this.sql.includes('SELECT * FROM channels')) {
-      const name = this.params[0];
-      return this.db.channels.find(r => r.channel_name === name && !r.deleted_at) ?? null;
-    }
-    return null;
-  }
-
-  all() { return { results: [] as Row[] }; }
-
-  run() {
-    if (this.sql.includes('INSERT INTO channels')) {
-      // INSERT INTO channels (id, user_id, channel_name, display_name, provider_hint,
-      //   client_token_hash, ingest_secret_hash, status, max_events, ttl_hours, created_at, updated_at)
-      // VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)
-      const row: Row = {
-        id: this.params[0],
-        user_id: this.params[1],
-        channel_name: this.params[2],
-        display_name: this.params[3],
-        provider_hint: this.params[4],
-        client_token_hash: this.params[5],
-        ingest_secret_hash: this.params[6],
-        status: 'active',
-        max_events: this.params[7],
-        ttl_hours: this.params[8],
-        created_at: this.params[9],
-        updated_at: this.params[10],
-        revoked_at: null,
-        expires_at: null,
-        deleted_at: null,
-      };
-      this.db.channels.push(row);
-    }
-    if (this.sql.includes('UPDATE channels')) {
-      const name = this.params[this.params.length - 1];
-      const ch = this.db.channels.find(r => r.channel_name === name);
-      if (ch) {
-        if (this.sql.includes("status = 'revoked'")) {
-          ch.status = 'revoked';
-          ch.revoked_at = this.params[0];
-          ch.updated_at = this.params[1];
-        }
-        if (this.sql.includes("status = 'deleted'")) {
-          ch.status = 'deleted';
-          ch.deleted_at = this.params[0];
-          ch.updated_at = this.params[1];
-        }
-      }
-    }
-    return { success: true as const };
-  }
-}
-
-export class MockD1 {
-  channels: Row[] = [];
-
-  prepare(sql: string): MockPreparedStatement {
-    return new MockPreparedStatement(sql, this);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// In-memory DO stub mock
-// ---------------------------------------------------------------------------
-
-export interface MockDOStub {
-  events: any[];
-  seq: number;
-  ingestEvent(raw: any): Promise<{ id: string; seq: number }>;
-  getEvents(params: any): Promise<any[]>;
-  clearEvents(): Promise<number>;
-  getStatus(): Promise<{ connectedClients: number; lastSeq: number; eventCount: number }>;
-  closeAllClients(code?: number, reason?: string): Promise<void>;
-}
-
-export function createMockDOStub(): MockDOStub {
+function makeEvents() {
   const events: any[] = [];
   let seq = 0;
   return {
     events,
-    seq: 0,
-    async ingestEvent(raw) {
+    ingest(raw: any) {
       seq++;
-      const evt = { id: `evt_test_${seq}`, seq, channel_name: raw.channel_name, received_at: new Date().toISOString(), ...raw };
+      const evt = { id: `evt_${seq}`, seq, received_at: new Date().toISOString(), ...raw };
       events.push(evt);
-      return { id: evt.id, seq: evt.seq };
+      return { id: evt.id, seq };
     },
-    async getEvents(params) {
+    getEvents(params: any) {
       const limit = Math.min(params.limit ?? 50, 100);
       let f = [...events];
-      if (params.afterSeq !== undefined) f = f.filter((e: any) => e.seq > params.afterSeq!);
-      if (params.beforeSeq !== undefined) f = f.filter((e: any) => e.seq < params.beforeSeq!);
+      if (params.afterSeq !== undefined) f = f.filter((e: any) => e.seq > params.afterSeq);
       return f.slice(-limit);
     },
-    async clearEvents() { const c = events.length; events.length = 0; return c; },
-    async getStatus() { return { connectedClients: 0, lastSeq: seq, eventCount: events.length }; },
-    async closeAllClients(_code?: number, _reason?: string) { /* no-op */ },
+    clearEvents() { const c = events.length; events.length = 0; return c; },
+    getStatus() { return { clients: 0, lastSeq: seq, events: events.length }; },
   };
 }
 
-// ---------------------------------------------------------------------------
-// Test harness
-// ---------------------------------------------------------------------------
+// Mock DO stub with fetch() that handles HTTP requests
+// (mirrors the real ChannelDO's Hono app routes)
+function createDOStub() {
+  const store = makeEvents();
+  const sessions: WebSocket[] = [];
 
-export interface TestEnv {
-  db: MockD1;
-  doStub: MockDOStub;
-  env: { DB: unknown; CHANNEL_DO: unknown };
+  async function fetch(req: Request): Promise<Response> {
+    const url = new URL(req.url);
+
+    if (url.pathname === '/ws' && req.headers.get('Upgrade') === 'websocket') {
+      const ws = new MockWebSocket();
+      sessions.push(ws as unknown as WebSocket);
+      // Node.js Response doesn't accept 101 — return 200 with mock ws
+      const resp = new Response(null, { status: 200 }) as any;
+      resp.webSocket = ws;
+      return resp;
+    }
+
+    if (url.pathname === '/ingest' && req.method === 'POST') {
+      const body = await req.json();
+      const result = store.ingest(body);
+      return new Response(JSON.stringify(result), { headers: { 'Content-Type': 'application/json' } });
+    }
+
+    if (url.pathname === '/events' && req.method === 'GET') {
+      const limit = parseInt(url.searchParams.get('limit') ?? '50');
+      const afterSeq = url.searchParams.get('after_seq') ? parseInt(url.searchParams.get('after_seq')!) : undefined;
+      const events = store.getEvents({ limit, afterSeq, includeBody: true });
+      return new Response(JSON.stringify({ events }), { headers: { 'Content-Type': 'application/json' } });
+    }
+
+    if (url.pathname === '/events' && req.method === 'DELETE') {
+      const deleted = store.clearEvents();
+      return new Response(JSON.stringify({ deleted_events: deleted }), { headers: { 'Content-Type': 'application/json' } });
+    }
+
+    if (url.pathname === '/status') {
+      return new Response(JSON.stringify(store.getStatus()), { headers: { 'Content-Type': 'application/json' } });
+    }
+
+    return new Response('Not found', { status: 404 });
+  }
+
+  return { fetch, store, sessions };
 }
 
-let _env: TestEnv;
+class MockWebSocket {
+  private listeners: Record<string, Function[]> = {};
+  addEventListener(event: string, fn: Function) {
+    (this.listeners[event] ??= []).push(fn);
+  }
+  emit(event: string, data?: any) {
+    (this.listeners[event] ?? []).forEach(fn => fn(data));
+  }
+  close() { this.emit('close'); }
+  send() {}
+}
 
-beforeEach(() => {
-  const db = new MockD1();
-  const doStub = createMockDOStub();
-  _env = {
-    db,
+export function mockEnv() {
+  const doStub = createDOStub();
+  return {
     doStub,
     env: {
-      DB: db,
       CHANNEL_DO: {
-        idFromName: () => ({ toString: () => 'mock-do-id' }),
-        get: () => doStub,
+        idFromName: () => ({ toString: () => 'x' }),
+        get: () => ({ fetch: doStub.fetch }),
       },
     },
   };
-});
-
-export function testEnv(): TestEnv {
-  return _env;
 }
 
-// ---------------------------------------------------------------------------
-// Helper to create a channel AND fix the token hash so auth passes
-// ---------------------------------------------------------------------------
-
-export async function seedChannel(app: any): Promise<{ channel_name: string; client_token: string }> {
-  const env = testEnv();
-  const res = await app.request('/v1/channels', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ display_name: 'Test' }),
-  }, env.env);
-  const ch: any = await res.json();
-
-  // Patch the stored hash to match the real token
-  const chRow = env.db.channels.find(r => r.channel_name === ch.channel_name);
-  if (chRow) {
-    chRow.client_token_hash = await hashToken(ch.client_token);
-  }
-
-  return { channel_name: ch.channel_name, client_token: ch.client_token };
+export function createReq() {
+  const app = createApp();
+  const { doStub, env } = mockEnv();
+  return {
+    doStub,
+    req: (path: string, init: RequestInit = {}) => app.request(path, init, env as any),
+  };
 }

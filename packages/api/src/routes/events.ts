@@ -1,161 +1,112 @@
 import { Hono } from 'hono';
-import { clientTokenAuth } from '../middleware/auth.js';
-import { verifyToken, hashToken } from '../lib/token.js';
-import type { EventsResponse, ClearEventsResponse } from '@hookwire/types';
-import { getChannelStub } from '../lib/do-types.js';
 
-interface ChannelRow {
-  id: string;
-  user_id: string;
-  channel_name: string;
-  display_name: string | null;
-  provider_hint: string | null;
-  client_token_hash: string;
-  ingest_secret_hash: string | null;
-  status: string;
-  max_events: number;
-  ttl_hours: number;
-  created_at: string;
-  updated_at: string;
-  revoked_at: string | null;
-  expires_at: string | null;
-  deleted_at: string | null;
+type Bindings = { CHANNEL_DO: DurableObjectNamespace };
+
+const events = new Hono<{ Bindings: Bindings }>();
+
+function getStub(c: any, name: string): DurableObjectStub {
+  return c.env.CHANNEL_DO.get(c.env.CHANNEL_DO.idFromName(name));
 }
 
-type Bindings = { DB: D1Database; CHANNEL_DO: DurableObjectNamespace };
-type Variables = { channel: ChannelRow };
+// ── GET /ch/:name/events ──────────────────────────────────
 
-const events = new Hono<{ Bindings: Bindings; Variables: Variables }>();
-
-// ---------------------------------------------------------------------------
-// GET /v1/channels/:channel_name/events — Event history
-// ---------------------------------------------------------------------------
-events.get('/:channel_name/events', clientTokenAuth, async (c) => {
-  const channelName = c.req.param('channel_name');
+events.get('/:name/events', async (c) => {
+  const name = c.req.param('name');
   const q = c.req.query();
 
-  const limit = q.limit ? Math.min(parseInt(q.limit, 10), 100) : 50;
-  const afterSeq = q.after_seq ? parseInt(q.after_seq, 10) : undefined;
-  const beforeSeq = q.before_seq ? parseInt(q.before_seq, 10) : undefined;
-  const includeBody = q.include_body !== 'false';
-  const includeHeaders = q.include_headers !== 'false';
+  const params = new URLSearchParams();
+  if (q.limit) params.set('limit', q.limit);
+  if (q.after_seq) params.set('after_seq', q.after_seq);
+  if (q.include_body) params.set('include_body', q.include_body);
 
-  const channel = c.get('channel');
-  if (channel.status !== 'active') {
-    return c.json(
-      { ok: false, error: { code: 'channel_not_active', message: 'Channel is not active' } },
-      403,
-    );
+  const stub = getStub(c, name);
+  const doRes = await stub.fetch(new Request(`http://do/events?${params.toString()}`));
+  const body = await doRes.json<any>();
+
+  return c.json({ ok: true, channel: name, events: body.events });
+});
+
+// ── DELETE /ch/:name/events ───────────────────────────────
+
+events.delete('/:name/events', async (c) => {
+  const name = c.req.param('name');
+  const stub = getStub(c, name);
+  const doRes = await stub.fetch(new Request('http://do/events', { method: 'DELETE' }));
+  const body = await doRes.json<any>();
+  return c.json({ ok: true, channel: name, deleted_events: body.deleted_events });
+});
+
+// ── GET /ch/:name/ws — WebSocket upgrade ──────────────────
+
+events.get('/:name/ws', async (c) => {
+  const name = c.req.param('name');
+
+  if (c.req.header('Upgrade') !== 'websocket') {
+    return c.json({ ok: false, error: { code: 'bad_request', message: 'Expected WebSocket upgrade' } }, 400);
   }
 
-  const stub = getChannelStub(c.env.CHANNEL_DO, channelName);
-  const items = await stub.getEvents({
-    limit,
-    afterSeq,
-    beforeSeq,
-    includeBody,
-    includeHeaders,
+  const stub = getStub(c, name);
+  return stub.fetch(new Request('http://do/ws', {
+    headers: { Upgrade: 'websocket' },
+  }));
+});
+
+// ── GET /ch/:name/sse — SSE (polls DO every 1s with keepalive) ──
+
+events.get('/:name/sse', async (c) => {
+  const name = c.req.param('name');
+  const stub = getStub(c, name);
+
+  // ?since=<seq> — start from this seq (default: only new events from now)
+  const sinceParam = c.req.query('since');
+  let lastSeq: number;
+
+  if (sinceParam !== undefined) {
+    lastSeq = parseInt(sinceParam, 10) || 0;
+  } else {
+    // No since → start from current newest, no history replay
+    const statusRes = await stub.fetch(new Request('http://do/status'));
+    const status = await statusRes.json<any>();
+    lastSeq = status.lastSeq ?? 0;
+  }
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      const encoder = new TextEncoder();
+      controller.enqueue(encoder.encode(':ok\n\n'));
+
+      // Keepalive every 15s to prevent Cloudflare killing idle stream
+      const keepalive = setInterval(() => {
+        try { controller.enqueue(encoder.encode(':ping\n\n')); } catch {}
+      }, 15_000);
+
+      const poll = setInterval(async () => {
+        try {
+          const doRes = await stub.fetch(new Request(`http://do/events?after_seq=${lastSeq}&limit=50`));
+          const body = await doRes.json<any>();
+          for (const event of body.events ?? []) {
+            lastSeq = Math.max(lastSeq, event.seq);
+            controller.enqueue(encoder.encode(`id: ${event.seq}\ndata: ${JSON.stringify(event)}\n\n`));
+          }
+        } catch { /* DO may be cold-starting */ }
+      }, 1000);
+
+      c.req.raw.signal.addEventListener('abort', () => {
+        clearInterval(keepalive);
+        clearInterval(poll);
+        try { controller.close(); } catch {}
+      });
+    },
   });
 
-  const eventsWithChannel = items.map((e: any) => ({ ...e, channel_name: channelName }));
-
-  const resp: EventsResponse = {
-    ok: true,
-    channel: channelName,
-    events: eventsWithChannel,
-  };
-
-  return c.json(resp);
-});
-
-// ---------------------------------------------------------------------------
-// DELETE /v1/channels/:channel_name/events — Clear all events
-// ---------------------------------------------------------------------------
-events.delete('/:channel_name/events', clientTokenAuth, async (c) => {
-  const channelName = c.req.param('channel_name');
-
-  const stub = getChannelStub(c.env.CHANNEL_DO, channelName);
-  const deleted = await stub.clearEvents();
-
-  const resp: ClearEventsResponse = {
-    ok: true,
-    channel: channelName,
-    deleted_events: deleted,
-  };
-
-  return c.json(resp);
-});
-
-// ---------------------------------------------------------------------------
-// GET /v1/channels/:channel_name/connect — WebSocket upgrade
-// ---------------------------------------------------------------------------
-events.get('/:channel_name/connect', async (c) => {
-  const channelName = c.req.param('channel_name');
-
-  // Auth before upgrade (manual, since middleware body return breaks WS)
-  const authHeader = c.req.header('Authorization');
-  if (!authHeader?.startsWith('Bearer ')) {
-    return c.json(
-      { ok: false, error: { code: 'unauthorized', message: 'Missing or invalid Authorization header' } },
-      401,
-    );
-  }
-
-  const token = authHeader.slice(7);
-  const channel = await c.env.DB.prepare(
-    'SELECT * FROM channels WHERE channel_name = ? AND deleted_at IS NULL',
-  ).bind(channelName).first();
-
-  if (!channel) {
-    return c.json(
-      { ok: false, error: { code: 'not_found', message: 'Channel not found' } },
-      404,
-    );
-  }
-
-  const valid = await verifyToken(token, channel.client_token_hash as string);
-  if (!valid) {
-    return c.json(
-      { ok: false, error: { code: 'unauthorized', message: 'Invalid client token' } },
-      401,
-    );
-  }
-
-  if (channel.status !== 'active') {
-    const statusCode = channel.status === 'revoked' ? 410 : 403;
-    return c.json(
-      { ok: false, error: { code: 'channel_not_active', message: `Channel is ${channel.status}` } },
-      statusCode,
-    );
-  }
-
-  // Concurrent client limit check
-  const stub = getChannelStub(c.env.CHANNEL_DO, channelName);
-  const status = await stub.getStatus();
-  if (status.connectedClients >= 10) {
-    return c.json(
-      { ok: false, error: { code: 'too_many_connections', message: 'Too many concurrent connections' } },
-      429,
-    );
-  }
-
-  // Verify it's a WebSocket upgrade
-  const upgradeHeader = c.req.header('Upgrade');
-  if (upgradeHeader !== 'websocket') {
-    return c.json(
-      { ok: false, error: { code: 'bad_request', message: 'Expected WebSocket upgrade' } },
-      400,
-    );
-  }
-
-  // Create WebSocket pair
-  const pair = new WebSocketPair();
-  const [clientWs, serverWs] = Object.values(pair);
-
-  // Hand off to ChannelDO
-  await stub.handleWebSocket(serverWs, 'sdk', c.req.header('User-Agent') ?? undefined);
-
-  return new Response(null, { status: 101, webSocket: clientWs });
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+    },
+  });
 });
 
 export { events as eventRoutes };

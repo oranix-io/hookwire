@@ -5,24 +5,10 @@
   "main": "./src/index.ts",
   "durable_objects": {
     "bindings": [
-      {
-        "name": "CHANNEL_DO",
-        "class_name": "ChannelDO"
-      }
+      { "name": "CHANNEL_DO", "class_name": "ChannelDO" }
     ]
   },
   "migrations": [
-    {
-      "tag": "v1",
-      "new_classes": ["ChannelDO"]
-    }
-  ],
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "hookwire-db",
-      "database_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-      "migrations_dir": "./migrations"
-    }
+    { "tag": "v1", "new_sqlite_classes": ["ChannelDO"] }
   ]
 }
