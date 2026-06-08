@@ -3,7 +3,7 @@ import { cors } from 'hono/cors';
 import { channelRoutes } from './routes/channels.js';
 import { ingestRoute } from './routes/ingest.js';
 import { eventRoutes } from './routes/events.js';
-import { openApiApp, redocHtml } from './routes/openapi.js';
+import { openApiApp, scalarDocs } from './routes/openapi.js';
 import { frontend } from './routes/frontend.jsx';
 import { errorHandler } from './middleware/error.js';
 import { ChannelDO } from './channel-do.js';
@@ -28,11 +28,11 @@ export function createApp(): Hono<{ Bindings: Bindings }> {
     return c.json({ ok: true, service: 'hookwire-api', version: '0.1.0' });
   });
 
-  // OpenAPI — mount the OpenAPIHono app for /docs
+  // OpenAPI JSON spec at /docs/openapi.json
   app.route('/docs', openApiApp);
 
-  // Redoc HTML at /docs
-  app.get('/docs', (c) => c.html(redocHtml()));
+  // Scalar API Reference UI at /docs
+  app.get('/docs', scalarDocs);
 
   // API route groups
   app.route('/v1/channels', channelRoutes);

@@ -21,7 +21,8 @@
     {
       "binding": "DB",
       "database_name": "hookwire-db",
-      "database_id": "your-database-id"
+      "database_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+      "migrations_dir": "./migrations"
     }
   ]
 }

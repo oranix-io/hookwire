@@ -306,7 +306,7 @@ openApiApp.openapi(clearEventsRoute, (c) => c.json({ ok: true } as any));
 openApiApp.openapi(wsConnectRoute, (c) => c.json({ ok: true } as any));
 
 // Configure the document
-openApiApp.doc('/docs/openapi.json', {
+openApiApp.doc('/openapi.json', {
   openapi: '3.1.0',
   info: {
     title: 'Hookwire API',
@@ -347,21 +347,17 @@ The WebSocket API uses a simple JSON message protocol:
   ],
 });
 
+import { apiReference } from '@scalar/hono-api-reference';
+
 // ---------------------------------------------------------------------------
-// Redoc HTML page
+// Scalar API Reference middleware — beautiful interactive API docs
 // ---------------------------------------------------------------------------
-export function redocHtml(): string {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Hookwire API v0.1 — Documentation</title>
-  <style> body { margin: 0; padding: 0; } </style>
-</head>
-<body>
-  <redoc spec-url="/docs/openapi.json"></redoc>
-  <script src="https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"></script>
-</body>
-</html>`;
-}
+export const scalarDocs = apiReference({
+  spec: { url: '/docs/openapi.json' },
+  theme: 'purple',
+  pageTitle: 'Hookwire API v0.1',
+  metaData: {
+    title: 'Hookwire API v0.1',
+    description: 'Webhook relay with real-time event streaming',
+  },
+});

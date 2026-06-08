@@ -15,15 +15,15 @@ const HARD_BODY_LIMIT = 1_048_576;  // 1 MB
 const SOFT_BODY_LIMIT = 262_144;    // 256 KB
 
 // Apply rate limiting to ingest
-ingest.use('/in/:channel_name', channelRateLimit({ maxRequests: 60, windowMs: 60_000 }));
+ingest.use('/:channel_name', channelRateLimit({ maxRequests: 60, windowMs: 60_000 }));
 
 // ---------------------------------------------------------------------------
-// ALL /in/:channel_name — Ingest a webhook (any HTTP method)
+// ALL /:channel_name — Ingest a webhook (any HTTP method)
 // ---------------------------------------------------------------------------
 const METHODS = ['POST', 'PUT', 'PATCH', 'GET', 'DELETE', 'HEAD', 'OPTIONS'];
 
 for (const method of METHODS) {
-  ingest.on(method, '/in/:channel_name', async (c) => {
+  ingest.on(method, '/:channel_name', async (c) => {
     const channelName = c.req.param('channel_name');
 
     // 1. Look up channel
