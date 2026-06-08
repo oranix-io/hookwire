@@ -7,10 +7,23 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "publishConfig": {
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "import": "./dist/index.js",
+        "types": "./dist/index.d.ts"
+      }
+    }
+  },
+  "files": ["dist", "src"],
   "scripts": {
+    "build": "rslib build",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "typescript": "^6.0.3"
+    "@rslib/core": "^0.15.1",
+    "typescript": "^5.7.0"
   }
 }

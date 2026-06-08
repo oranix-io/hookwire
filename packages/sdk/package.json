@@ -7,14 +7,30 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "publishConfig": {
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "import": "./dist/index.js",
+        "types": "./dist/index.d.ts"
+      }
+    }
+  },
+  "files": ["dist"],
   "scripts": {
-    "build": "tsc",
-    "typecheck": "tsc --noEmit"
+    "build": "rslib build",
+    "dev": "rslib build --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
-    "@hookwire/types": "*"
+    "@hookwire/types": "0.1.0"
   },
   "devDependencies": {
-    "typescript": "^5.7.0"
+    "@rslib/core": "^0.15.1",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.0"
   }
 }
