@@ -24,12 +24,17 @@ channelPage.get('/:name', (c) => {
   .top a:hover{color:#4f46e5}
   .top .sep{color:#cbd5e1}
   .top .name{font-family:'JetBrains Mono',monospace;font-size:.85rem;color:#6366f1;font-weight:500}
-  .url-box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:1rem 1.25rem;margin-bottom:1.5rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}
-  .url-box code{font-family:'JetBrains Mono',monospace;font-size:.82rem;color:#475569;word-break:break-all;flex:1}
-  .url-box button{background:#6366f1;color:#fff;border:none;padding:.45rem 1rem;border-radius:8px;font-size:.78rem;font-weight:600;cursor:pointer;white-space:nowrap;transition:background .15s}
-  .url-box button:hover{background:#4f46e5}
-  .url-box button.sec{background:#fff;color:#6366f1;border:1px solid #e2e8f0}
-  .url-box button.sec:hover{background:#f1f5f9}
+  .url-box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;margin-bottom:1.5rem}
+  .url-main{display:flex;align-items:center;gap:.75rem;padding:1rem 1.25rem;border-bottom:1px solid #e2e8f0}
+  .url-main code{font-family:'JetBrains Mono',monospace;font-size:.82rem;color:#475569;word-break:break-all;flex:1}
+  .url-main button{background:#6366f1;color:#fff;border:none;padding:.45rem 1rem;border-radius:8px;font-size:.78rem;font-weight:600;cursor:pointer;white-space:nowrap;transition:background .15s}
+  .url-main button:hover{background:#4f46e5}
+  .url-alt{padding:.6rem 1.25rem;display:flex;gap:1.5rem;flex-wrap:wrap}
+  .url-alt .row{display:flex;align-items:center;gap:.5rem;font-size:.75rem}
+  .url-alt .label{color:#94a3b8;font-weight:500;white-space:nowrap}
+  .url-alt code{font-family:'JetBrains Mono',monospace;font-size:.7rem;color:#6366f1}
+  .url-alt button{background:none;border:1px solid #e2e8f0;color:#94a3b8;padding:.2rem .55rem;border-radius:5px;font-size:.68rem;cursor:pointer;transition:all .15s}
+  .url-alt button:hover{border-color:#6366f1;color:#6366f1}
   .status{display:flex;align-items:center;gap:.5rem;margin-bottom:1.5rem;font-size:.82rem;color:#94a3b8}
   .dot{width:7px;height:7px;border-radius:50%;display:inline-block}
   .dot.on{background:#22c55e}
@@ -43,6 +48,9 @@ channelPage.get('/:name', (c) => {
   .empty .icon{font-size:2rem;margin-bottom:.75rem}
   .empty p{font-size:.95rem;margin-bottom:.3rem}
   .empty code{color:#6366f1;font-family:'JetBrains Mono',monospace;font-size:.82rem}
+  .footer{text-align:center;margin-top:3rem;padding-top:1.5rem;border-top:1px solid #e2e8f0;font-size:.78rem;color:#94a3b8}
+  .footer a{color:#94a3b8;text-decoration:none}
+  .footer a:hover{color:#6366f1}
 </style>
 </head>
 <body>
@@ -54,9 +62,22 @@ channelPage.get('/:name', (c) => {
   </div>
 
   <div class="url-box">
-    <code>${hookUrl}</code>
-    <button onclick="copyUrl()">Copy</button>
-    <button class="sec" onclick="copySse()">SSE</button>
+    <div class="url-main">
+      <code>${hookUrl}</code>
+      <button onclick="clip('${hookUrl}',this)">Copy</button>
+    </div>
+    <div class="url-alt">
+      <div class="row">
+        <span class="label">WS</span>
+        <code>${wsUrl}</code>
+        <button onclick="clip('${wsUrl}',this)">Copy</button>
+      </div>
+      <div class="row">
+        <span class="label">SSE</span>
+        <code>${sseUrl}</code>
+        <button onclick="clip('${sseUrl}',this)">Copy</button>
+      </div>
+    </div>
   </div>
 
   <div class="status">
@@ -67,42 +88,29 @@ channelPage.get('/:name', (c) => {
 
   <div id="events"></div>
 
-  <div style="text-align:center;margin-top:3rem;padding-top:1.5rem;border-top:1px solid #e2e8f0;font-size:.78rem;color:#94a3b8">
-    <a href="/" style="color:#94a3b8;text-decoration:none">Hookwire</a> ·
-    <a href="https://github.com/oranix-io/hookwire" style="color:#94a3b8;text-decoration:none">GitHub</a>
+  <div class="footer">
+    <a href="/">Hookwire</a> ·
+    <a href="https://github.com/oranix-io/hookwire">GitHub</a>
   </div>
 </div>
 
 <script>
-var NAME='${name}';
-var WS_URL='${wsUrl}';
-var SSE_URL='${sseUrl}';
-var events=[];
-var el=document.getElementById('events');
-var dot=document.getElementById('dot');
-var st=document.getElementById('status');
-var cnt=document.getElementById('cnt');
+var NAME='${name}',WS_URL='${wsUrl}',SSE_URL='${sseUrl}';
+var events=[],el=document.getElementById('events'),dot=document.getElementById('dot'),st=document.getElementById('status'),cnt=document.getElementById('cnt');
 
 function render(){
   if(!events.length){el.innerHTML='<div class=empty><div class=icon>📨</div><p>Waiting for webhooks…</p><p>POST to <code>'+NAME+'</code></p></div>';return}
   el.innerHTML=events.slice().reverse().map(function(e){return'<div class=event><div class=event-head><span class=meta>'+e.method+' · '+new Date(e.received_at).toLocaleTimeString()+'</span><span class=seq>#'+e.seq+'</span></div><div class=event-body>'+esc(e.body.data).slice(0,4000)+(e.body.size>4000?'\\n…truncated':'')+'</div></div>'}).join('')
 }
 function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
-function copyUrl(){navigator.clipboard.writeText('${hookUrl}');var b=document.querySelector('button');b.textContent='Copied!';setTimeout(function(){b.textContent='Copy'},1500)}
-function copySse(){navigator.clipboard.writeText(SSE_URL);var b=document.querySelector('button.sec');b.textContent='Copied!';setTimeout(function(){b.textContent='SSE'},1500)}
+function clip(url,btn){navigator.clipboard.writeText(url);btn.textContent='Copied!';setTimeout(function(){btn.textContent='Copy'},1500)}
 
-// WebSocket
 var ws=new WebSocket(WS_URL);
 ws.onopen=function(){dot.className='dot on';st.textContent='Live'}
 ws.onclose=function(){dot.className='dot off';st.textContent='Disconnected'}
-ws.onmessage=function(msg){
-  try{var d=JSON.parse(msg.data);if(d.type==='event'){events.push(d);cnt.textContent=events.length+' events';render()}}catch(e){}
-}
+ws.onmessage=function(msg){try{var d=JSON.parse(msg.data);if(d.type==='event'){events.push(d);cnt.textContent=events.length+' events';render()}}catch(e){}}
 
-// History
-fetch('/ch/'+NAME+'/events?limit=20').then(function(r){return r.json()}).then(function(d){
-  if(d.events){events=d.events;cnt.textContent=events.length+' events'}render()
-}).catch(function(){render()})
+fetch('/ch/'+NAME+'/events?limit=20').then(function(r){return r.json()}).then(function(d){if(d.events){events=d.events;cnt.textContent=events.length+' events'}render()}).catch(function(){render()})
 </script>
 </body>
 </html>`);
