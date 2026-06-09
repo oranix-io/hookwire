@@ -46,7 +46,10 @@ events.get('/:name/ws', async (c) => {
   }
 
   const stub = getStub(c, name);
-  return stub.fetch(new Request('http://do/ws', {
+
+  // Forward WS upgrade to DO, preserving ?since= if present
+  const doUrl = new URL(c.req.url);
+  return stub.fetch(new Request(`http://do/ws${doUrl.search}`, {
     headers: { Upgrade: 'websocket' },
   }));
 });

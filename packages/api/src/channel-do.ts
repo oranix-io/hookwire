@@ -81,14 +81,30 @@ export class ChannelDO extends DurableObject {
   private createApp(): Hono {
     const app = new Hono();
 
-    // WebSocket upgrade — for both client WS and SSE bridge
+    // WebSocket upgrade — supports ?since=<seq> for replay
     app.get('/ws', async (c) => {
       if (c.req.header('Upgrade') !== 'websocket') {
         return new Response('Expected WebSocket', { status: 400 });
       }
+
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
       this.acceptSession(server);
+
+      // Replay history if ?since= is provided
+      const sinceParam = c.req.query('since');
+      if (sinceParam !== undefined) {
+        const since = parseInt(sinceParam, 10) || 0;
+        const history = await this.getEvents({ afterSeq: since, limit: 100, includeBody: true });
+        for (const event of history) {
+          server.send(JSON.stringify({
+            type: 'event', id: event.id, seq: event.seq,
+            received_at: event.received_at, method: event.method,
+            headers: event.headers, body: event.body, summary: event.summary,
+          } satisfies ServerMessage));
+        }
+      }
+
       return new Response(null, { status: 101, webSocket: client });
     });
 

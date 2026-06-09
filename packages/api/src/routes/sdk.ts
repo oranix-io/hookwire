@@ -109,6 +109,18 @@ es.<span class="fn">onmessage</span> = (<span class="kw">event</span>) => {
   console.<span class="fn">log</span>(<span class="str">'SSE event #'</span>, data.seq);
 };</pre>
 
+  <h2>Event Replay</h2>
+  <p>Both WebSocket and SSE support <code>?since=</code> for replaying missed events:</p>
+  <table>
+    <tr><th>URL</th><th>Behavior</th></tr>
+    <tr><td><code>/ch/:name/ws</code></td><td>Real-time only (no history)</td></tr>
+    <tr><td><code>/ch/:name/ws?since=0</code></td><td>Full replay + real-time</td></tr>
+    <tr><td><code>/ch/:name/ws?since=42</code></td><td>Replay from seq 42 + real-time</td></tr>
+    <tr><td><code>/ch/:name/sse</code></td><td>Real-time only</td></tr>
+    <tr><td><code>/ch/:name/sse?since=0</code></td><td>Full replay + real-time</td></tr>
+  </table>
+  <p>The SDK automatically appends <code>?since=</code> on reconnect — you never miss events that are still in the retention window (100 events / 24 hours).</p>
+
   <p style="margin-top:3rem;font-size:.8rem;color:#94a3b8">
     <a href="/docs" style="color:#6366f1">API Docs</a> ·
     <a href="/" style="color:#6366f1">Home</a> ·

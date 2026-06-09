@@ -62,7 +62,20 @@ Hookwire supports both **WebSocket** and **Server-Sent Events (SSE)**.
 | WebSocket | `/ch/:name/ws` | Bidirectional | Low latency, custom clients |
 | SSE | `/ch/:name/sse` | Server → Client | Browsers, `EventSource` API |
 
-Both receive the same event payload. SSE adds `?since=<seq>` for resuming from a specific point.
+Both receive the same event payload.
+
+### Replay
+
+Both protocols support `?since=` for replaying missed events:
+
+```
+/ch/:name/ws?since=0   → full replay + real-time
+/ch/:name/ws?since=42  → replay from seq 42 + real-time
+```
+
+- Server sends history events first, then switches to real-time.
+- SDK automatically appends `?since=` on reconnect — no missed events.
+- Retention: 100 events / 24 hours. Events outside this window are lost.
 
 ## API
 
@@ -101,7 +114,7 @@ client.onEvent(event => {
 await client.connect();
 ```
 
-Auto-reconnect with exponential backoff, history catch-up, typed events. [Docs →](/sdk)
+Auto-reconnect with exponential backoff, server-side replay via `?since=`. [Docs →](/sdk)
 
 Or use plain SSE — no SDK needed:
 

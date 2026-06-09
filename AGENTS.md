@@ -106,7 +106,7 @@ npm run deploy:version
 # Then promote via Cloudflare Dashboard → Workers → hookwire-api → Versions
 ```
 
-### Known: WebSocket disconnect on deploy
+## Known: WebSocket disconnect on deploy
 
 Every `wrangler deploy` restarts all Durable Objects, dropping active WebSocket
 connections. Mitigations:
@@ -117,6 +117,29 @@ connections. Mitigations:
    reconnect built in.
 3. **Future**: Durable Object hibernation with WS attachment serialization
    can preserve connections across code updates (not yet implemented).
+
+---
+
+## Event Replay
+
+Both WebSocket and SSE support the `?since=` parameter for replay:
+
+```
+/ch/:name/ws           → real-time only
+/ch/:name/ws?since=0   → full replay + real-time
+/ch/:name/ws?since=42  → replay from seq 42 + real-time
+
+/ch/:name/sse          → real-time only
+/ch/:name/sse?since=0  → full replay + real-time
+/ch/:name/sse?since=42 → replay from seq 42 + real-time
+```
+
+- Server replays history events before switching to real-time stream.
+- SDK automatically appends `?since=${lastSeq}` on reconnect.
+- Client deduplicates by seq (skips events with seq <= lastSeen).
+- Retention window: max 100 events / 24 hours. Events outside window are lost.
+
+See the "Event Replay" section in README for consumer-facing docs.
 
 ---
 

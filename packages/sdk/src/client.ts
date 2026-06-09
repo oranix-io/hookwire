@@ -30,8 +30,8 @@ export class HookwireClient {
     };
   }
 
+  /** Connect via WebSocket — server replays history when ?since= is set */
   async connect(): Promise<void> {
-    await this.catchUpHistory();
     this.connectWS();
   }
 
@@ -47,6 +47,7 @@ export class HookwireClient {
     return () => { this.handlers.delete(handler); };
   }
 
+  /** Manually fetch event history via REST API */
   async getHistory(params?: { limit?: number; afterSeq?: number }): Promise<ChannelEvent[]> {
     const resp = await fetchHistory({
       baseUrl: this.options.baseUrl,
@@ -57,21 +58,18 @@ export class HookwireClient {
     return resp.events;
   }
 
-  private async catchUpHistory(): Promise<void> {
-    try {
-      const events = await this.getHistory({ afterSeq: this.lastSeq, limit: 50 });
-      for (const e of events) { this.lastSeq = Math.max(this.lastSeq, e.seq); this.emit(e); }
-    } catch (err) {
-      console.warn('[HookwireSDK] History fetch failed:', err);
-    }
-  }
+  // ── Private ─────────────────────────────────────────────
 
   private connectWS(): void {
-    const url = `${this.options.baseUrl.replace('http', 'ws')}/ch/${this.options.channelName}/ws`;
+    // If we have a lastSeq, ask server to replay from that point
+    const since = this.lastSeq > 0 ? `?since=${this.lastSeq}` : '';
+    const url = `${this.options.baseUrl.replace('http', 'ws')}/ch/${this.options.channelName}/ws${since}`;
     this.ws = new HookwireWebSocket(url);
 
     this.ws.on('event', (event: ChannelEvent) => {
-      this.lastSeq = Math.max(this.lastSeq, event.seq);
+      // Skip duplicates (replay edge case)
+      if (event.seq <= this.lastSeq) return;
+      this.lastSeq = event.seq;
       this.emit(event);
     });
 
@@ -84,8 +82,7 @@ export class HookwireClient {
   private scheduleReconnect(): void {
     if (!this.options.autoReconnect) return;
     const delay = this.options.reconnectDelay * Math.min(Math.pow(2, this.reconnectAttempts++), 30_000);
-    this.reconnectTimer = setTimeout(async () => {
-      await this.catchUpHistory();
+    this.reconnectTimer = setTimeout(() => {
       this.connectWS();
     }, delay);
   }
