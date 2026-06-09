@@ -95,6 +95,31 @@ npm run publish:all     # both
 
 ---
 
+## Deployment
+
+```bash
+# Production deploy
+npm run deploy
+
+# Preview version (upload without promoting)
+npm run deploy:version
+# Then promote via Cloudflare Dashboard → Workers → hookwire-api → Versions
+```
+
+### Known: WebSocket disconnect on deploy
+
+Every `wrangler deploy` restarts all Durable Objects, dropping active WebSocket
+connections. Mitigations:
+
+1. **Use gradual rollouts** — `wrangler versions upload` + promote via Dashboard
+   to minimize simultaneous disconnects.
+2. **Client SDK auto-reconnects** — `HookwireClient` has exponential backoff
+   reconnect built in.
+3. **Future**: Durable Object hibernation with WS attachment serialization
+   can preserve connections across code updates (not yet implemented).
+
+---
+
 ## Testing
 
 ```bash
