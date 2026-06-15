@@ -30,8 +30,8 @@
     "@hookwire/types": "0.1.0"
   },
   "devDependencies": {
-    "@rslib/core": "^0.22.0",
+    "@rslib/core": "^0.22.1",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.0"
+    "vitest": "^4.1.9"
   }
 }
