@@ -14,14 +14,14 @@
   "dependencies": {
     "@hono/zod-openapi": "^1.4.0",
     "@hookwire/types": "0.1.0",
-    "@scalar/hono-api-reference": "^0.11.0",
-    "hono": "^4.12.24",
+    "@scalar/hono-api-reference": "^0.11.3",
+    "hono": "^4.12.25",
     "zod": "^4.4.0"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260608.1",
+    "@cloudflare/workers-types": "^4.20260615.1",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.0",
-    "wrangler": "^4.17.0"
+    "vitest": "^4.1.9",
+    "wrangler": "^4.100.0"
   }
 }
