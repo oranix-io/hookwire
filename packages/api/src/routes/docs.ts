@@ -30,10 +30,14 @@ const ingestRoute = createRoute({
   path: '/ch/{name}',
   tags: ['Ingest'],
   summary: 'Ingest a webhook',
-  description: 'Receives a webhook from any external service. No auth required — the channel name is the only credential. Supports any content type.',
-  parameters: [{ name: 'name', in: 'path', required: true, schema: { type: 'string' }, description: 'Your channel name' }],
+  description: 'Receives a webhook from any external service. If the `INGEST_SECRET` env var is configured, senders must present it via the `x-hookwire-secret` header. Supports any content type.',
+  parameters: [
+    { name: 'name', in: 'path', required: true, schema: { type: 'string' }, description: 'Your channel name' },
+    { name: 'x-hookwire-secret', in: 'header', required: false, schema: { type: 'string' }, description: 'Ingest secret (required when INGEST_SECRET is set)' },
+  ],
   responses: {
     202: { description: 'Webhook accepted', content: { 'application/json': { schema: z.object({ ok: z.literal(true), event_id: z.string(), seq: z.number() }) } } },
+    401: { description: 'Invalid or missing ingest secret', content: { 'application/json': { schema: ErrorSchema } } },
     413: { description: 'Body too large', content: { 'application/json': { schema: ErrorSchema } } },
     429: { description: 'Rate limited', content: { 'application/json': { schema: ErrorSchema } } },
   },
@@ -47,7 +51,7 @@ const getEventsRoute = createRoute({
   parameters: [
     { name: 'name', in: 'path', required: true, schema: { type: 'string' } },
     { name: 'limit', in: 'query', schema: { type: 'integer', default: 50, maximum: 100 } },
-    { name: 'after_seq', in: 'query', schema: { type: 'integer' } },
+    { name: 'after_seq', in: 'query', schema: { type: 'integer' }, description: 'Return events with seq > this value, ascending — drain by passing the last seen seq' },
     { name: 'include_body', in: 'query', schema: { type: 'boolean', default: true } },
   ],
   responses: {

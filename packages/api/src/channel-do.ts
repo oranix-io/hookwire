@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers';
 import { Hono } from 'hono';
 import { generateEventId } from './lib/idgen.js';
 import { generateSummary } from './lib/summary.js';
+import { envInt } from './lib/env.js';
 import type { ServerMessage } from '@hookwire/types';
 
 /** Helper: SqlStorageCursor 没有 .first()，用 next() 实现 */
@@ -25,15 +26,23 @@ interface EventRow {
   summary_json: string | null;
 }
 
+// Retention window for the persistent event queue
+const DEFAULT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const DEFAULT_MAX_EVENTS = 10_000;
+
 export class ChannelDO extends DurableObject {
   private sql: SqlStorage;
   private sessions = new Map<string, ClientSession>();
   private lastSeq = 0;
   private eventCount = 0;
   private app: Hono;
+  private retentionMs: number;
+  private maxEvents: number;
 
   constructor(ctx: DurableObjectState, env: any) {
     super(ctx, env);
+    this.retentionMs = envInt(env, 'RETENTION_MS', DEFAULT_RETENTION_MS);
+    this.maxEvents = envInt(env, 'MAX_EVENTS', DEFAULT_MAX_EVENTS);
     this.sql = ctx.storage.sql;
 
     this.sql.exec(`
@@ -94,8 +103,11 @@ export class ChannelDO extends DurableObject {
       // Replay history if ?since= is provided
       const sinceParam = c.req.query('since');
       if (sinceParam !== undefined) {
-        const since = parseInt(sinceParam, 10) || 0;
-        const history = await this.getEvents({ afterSeq: since, limit: 100, includeBody: true });
+        const parsed = Number(sinceParam);
+        if (!Number.isInteger(parsed) || parsed < 0) {
+          return new Response('invalid since: must be a non-negative integer', { status: 400 });
+        }
+        const history = await this.getEvents({ afterSeq: parsed, limit: 100, includeBody: true });
         for (const event of history) {
           server.send(JSON.stringify({
             type: 'event', id: event.id, seq: event.seq,
@@ -122,8 +134,27 @@ export class ChannelDO extends DurableObject {
     // Get events
     app.get('/events', async (c) => {
       const limit = Math.min(parseInt(c.req.query('limit') ?? '50'), 100);
-      const afterSeq = c.req.query('after_seq') ? parseInt(c.req.query('after_seq')!) : undefined;
+      const afterSeqParam = c.req.query('after_seq');
       const includeBody = c.req.query('include_body') !== 'false';
+
+      let afterSeq: number | undefined;
+      if (afterSeqParam !== undefined) {
+        const parsed = Number(afterSeqParam);
+        if (!Number.isInteger(parsed) || parsed < 0) {
+          return c.json({ error: 'invalid after_seq: must be a non-negative integer' }, 400);
+        }
+        afterSeq = parsed;
+
+        // If the consumer's cursor points at events already evicted from
+        // retention, an empty 200 would look like "no new events". Return
+        // 410 so they can resync from the oldest retained seq.
+        const minRow = firstRow(this.sql.exec('SELECT MIN(seq) AS m FROM events')) as { m: number | null } | null;
+        const minSeq = minRow?.m ?? null;
+        if (minSeq !== null && afterSeq < minSeq - 1) {
+          return c.json({ error: 'after_seq precedes retained window; resync from min_seq', min_seq: minSeq }, 410);
+        }
+      }
+
       const items = await this.getEvents({ limit, afterSeq, includeBody });
       return c.json({ events: items });
     });
@@ -160,7 +191,7 @@ export class ChannelDO extends DurableObject {
        VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
       id, seq, receivedAt, raw.method, JSON.stringify(raw.headers),
       raw.body.content_type ?? null, raw.body.encoding,
-      raw.body.truncated ? null : raw.body.data,
+      raw.body.data,
       raw.body.size, raw.body.truncated ? 1 : 0,
       JSON.stringify(summary),
     );
@@ -178,21 +209,25 @@ export class ChannelDO extends DurableObject {
   async getEvents(params: { limit?: number; afterSeq?: number; includeBody?: boolean }): Promise<any[]> {
     const limit = Math.min(params.limit ?? 50, 100);
     const includeBody = params.includeBody ?? true;
-    const clauses = ['1=1'];
-    const args: unknown[] = [];
-    if (params.afterSeq !== undefined) { clauses.push('seq > ?'); args.push(params.afterSeq); }
 
-    const rows = this.sql.exec(
-      `SELECT * FROM events WHERE ${clauses.join(' AND ')} ORDER BY seq DESC LIMIT ?`, ...args, limit,
-    ).toArray() as unknown as EventRow[];
+    // With after_seq, return the first `limit` events after that seq in
+    // ascending order — consumers can drain reliably by tracking last seq.
+    // Without it, return the latest `limit` events (still ascending).
+    const rows = params.afterSeq !== undefined
+      ? this.sql.exec(
+          `SELECT * FROM events WHERE seq > ? ORDER BY seq ASC LIMIT ?`, params.afterSeq, limit,
+        ).toArray() as unknown as EventRow[]
+      : (this.sql.exec(
+          `SELECT * FROM events ORDER BY seq DESC LIMIT ?`, limit,
+        ).toArray() as unknown as EventRow[]).reverse();
 
-    return rows.reverse().map(r => ({
+    return rows.map(r => ({
       id: r.id, seq: r.seq, received_at: r.received_at,
       method: r.method, headers: JSON.parse(r.headers_json),
       body: {
         encoding: r.body_encoding as 'utf8' | 'base64',
         content_type: r.content_type ?? undefined,
-        data: includeBody ? (r.body_truncated ? '' : (r.body_data ?? '')) : '',
+        data: includeBody ? (r.body_data ?? '') : '',
         size: r.body_size, truncated: Boolean(r.body_truncated),
       },
       summary: r.summary_json ? JSON.parse(r.summary_json) : undefined,
@@ -243,11 +278,11 @@ export class ChannelDO extends DurableObject {
   }
 
   private async cleanup(): Promise<void> {
-    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const cutoff = new Date(Date.now() - this.retentionMs).toISOString();
     this.sql.exec('DELETE FROM events WHERE received_at < ?', cutoff);
     const cnt = this.sql.exec('SELECT COUNT(*) as c FROM events').one() as { c: number } | null;
-    if (cnt && cnt.c > 100) {
-      this.sql.exec('DELETE FROM events WHERE seq IN (SELECT seq FROM events ORDER BY seq ASC LIMIT ?)', cnt.c - 100);
+    if (cnt && cnt.c > this.maxEvents) {
+      this.sql.exec('DELETE FROM events WHERE seq IN (SELECT seq FROM events ORDER BY seq ASC LIMIT ?)', cnt.c - this.maxEvents);
     }
     const newCnt = this.sql.exec('SELECT COUNT(*) as c FROM events').one() as { c: number } | null;
     if (newCnt) { this.eventCount = newCnt.c; this.persistMeta(); }

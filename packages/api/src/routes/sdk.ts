@@ -119,7 +119,7 @@ es.<span class="fn">onmessage</span> = (<span class="kw">event</span>) => {
     <tr><td><code>/ch/:name/sse</code></td><td>Real-time only</td></tr>
     <tr><td><code>/ch/:name/sse?since=0</code></td><td>Full replay + real-time</td></tr>
   </table>
-  <p>The SDK automatically appends <code>?since=</code> on reconnect — you never miss events that are still in the retention window (100 events / 24 hours).</p>
+  <p>The SDK automatically appends <code>?since=</code> on reconnect — you never miss events that are still in the retention window (10,000 events / 7 days by default).</p>
 
   <p style="margin-top:3rem;font-size:.8rem;color:#94a3b8">
     <a href="/docs" style="color:#6366f1">API Docs</a> ·

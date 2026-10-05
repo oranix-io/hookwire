@@ -36,7 +36,7 @@ export function channelRateLimit(opts: { windowMs?: number; maxRequests?: number
   const maxRequests = opts.maxRequests ?? 60;
 
   return async (c: Context, next: Next) => {
-    const channelName = c.req.param('channel_name');
+    const channelName = c.req.param('name');
     if (!channelName) return next();
 
     maybeCleanup();

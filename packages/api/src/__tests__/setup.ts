@@ -14,7 +14,10 @@ function makeEvents() {
     getEvents(params: any) {
       const limit = Math.min(params.limit ?? 50, 100);
       let f = [...events];
-      if (params.afterSeq !== undefined) f = f.filter((e: any) => e.seq > params.afterSeq);
+      if (params.afterSeq !== undefined) {
+        f = f.filter((e: any) => e.seq > params.afterSeq);
+        return f.slice(0, limit);
+      }
       return f.slice(-limit);
     },
     clearEvents() { const c = events.length; events.length = 0; return c; },
@@ -48,7 +51,23 @@ function createDOStub() {
 
     if (url.pathname === '/events' && req.method === 'GET') {
       const limit = parseInt(url.searchParams.get('limit') ?? '50');
-      const afterSeq = url.searchParams.get('after_seq') ? parseInt(url.searchParams.get('after_seq')!) : undefined;
+      const afterSeqParam = url.searchParams.get('after_seq');
+      let afterSeq: number | undefined;
+      if (afterSeqParam !== null) {
+        const parsed = Number(afterSeqParam);
+        if (!Number.isInteger(parsed) || parsed < 0) {
+          return new Response(JSON.stringify({ error: 'invalid after_seq: must be a non-negative integer' }), {
+            status: 400, headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        afterSeq = parsed;
+        const minSeq = store.events.length ? Math.min(...store.events.map((e: any) => e.seq)) : null;
+        if (minSeq !== null && afterSeq < minSeq - 1) {
+          return new Response(JSON.stringify({ error: 'after_seq precedes retained window; resync from min_seq', min_seq: minSeq }), {
+            status: 410, headers: { 'Content-Type': 'application/json' },
+          });
+        }
+      }
       const events = store.getEvents({ limit, afterSeq, includeBody: true });
       return new Response(JSON.stringify({ events }), { headers: { 'Content-Type': 'application/json' } });
     }
@@ -93,11 +112,11 @@ export function mockEnv() {
   };
 }
 
-export function createReq() {
+export function createReq(envOverrides: Record<string, unknown> = {}) {
   const app = createApp();
   const { doStub, env } = mockEnv();
   return {
     doStub,
-    req: (path: string, init: RequestInit = {}) => app.request(path, init, env as any),
+    req: (path: string, init: RequestInit = {}) => app.request(path, init, { ...env, ...envOverrides } as any),
   };
 }

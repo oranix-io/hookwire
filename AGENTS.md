@@ -137,7 +137,7 @@ Both WebSocket and SSE support the `?since=` parameter for replay:
 - Server replays history events before switching to real-time stream.
 - SDK automatically appends `?since=${lastSeq}` on reconnect.
 - Client deduplicates by seq (skips events with seq <= lastSeen).
-- Retention window: max 100 events / 24 hours. Events outside window are lost.
+- Retention window: max 10,000 events / 7 days. Events outside window are lost.
 
 See the "Event Replay" section in README for consumer-facing docs.
 
