@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { generateChannelName } from '../lib/idgen.js';
+import { generateChannelName } from '@hookwire/server';
 
 const home = new Hono();
 

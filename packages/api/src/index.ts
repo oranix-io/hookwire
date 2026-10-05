@@ -1,13 +1,11 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { ingestRoute } from './routes/ingest.js';
-import { eventRoutes } from './routes/events.js';
+import { ingestRoute, eventRoutes, ChannelDO } from '@hookwire/server';
 import { channelPage } from './routes/channel.js';
 import { home } from './routes/home.js';
 import { sdkPage } from './routes/sdk.js';
 import { openApiApp, scalarDocs } from './routes/docs.js';
 import { errorHandler } from './middleware/error.js';
-import { ChannelDO } from './channel-do.js';
 
 type Bindings = { CHANNEL_DO: DurableObjectNamespace };
 

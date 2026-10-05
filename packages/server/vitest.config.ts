@@ -1,7 +1,7 @@
 import { defineConfig } from 'vitest/config';
 import path from 'node:path';
 
-const mocks = path.resolve(__dirname, '../server/src/__tests__/mocks');
+const mocks = path.resolve(__dirname, 'src/__tests__/mocks');
 
 export default defineConfig({
   test: {
