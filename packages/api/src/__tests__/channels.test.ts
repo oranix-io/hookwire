@@ -31,6 +31,32 @@ describe('Ingest ANY /ch/:name', () => {
     expect(res.status).toBe(413);
   });
 
+  it('stores body > 256 KB in full (no silent truncation)', async () => {
+    const { req } = createReq();
+    const large = 'x'.repeat(300_000);
+    const res = await req('/ch/mediumtest', { method: 'POST', body: large });
+    expect(res.status).toBe(202);
+    const events = await (await req('/ch/mediumtest/events')).json();
+    expect(events.events[0].body.truncated).toBe(false);
+    expect(events.events[0].body.data.length).toBe(300_000);
+  });
+
+  it('returns 401 without x-hookwire-secret when INGEST_SECRET is set', async () => {
+    const { req } = createReq({ INGEST_SECRET: 's3cret' });
+    const res = await req('/ch/authtest', { method: 'POST', body: '{}' });
+    expect(res.status).toBe(401);
+  });
+
+  it('accepts ingest with correct x-hookwire-secret', async () => {
+    const { req } = createReq({ INGEST_SECRET: 's3cret' });
+    const res = await req('/ch/authtest2', {
+      method: 'POST',
+      headers: { 'x-hookwire-secret': 's3cret' },
+      body: '{}',
+    });
+    expect(res.status).toBe(202);
+  });
+
   it('seq increments across 5 ingests with shared mock', async () => {
     const { req } = createReq();
     for (let i = 1; i <= 5; i++) {
@@ -75,6 +101,16 @@ describe('GET /ch/:name/events', () => {
     }
     const res = await req('/ch/mych2/events?after_seq=2');
     expect((await res.json()).events.length).toBe(3);
+  });
+
+  it('after_seq pagination is gap-safe (ascending from cursor)', async () => {
+    const { req } = createReq();
+    for (let i = 0; i < 10; i++) {
+      await req('/ch/drain', { method: 'POST', body: '{}' });
+    }
+    const res = await req('/ch/drain/events?after_seq=0&limit=3');
+    const seqs = (await res.json()).events.map((e: any) => e.seq);
+    expect(seqs).toEqual([1, 2, 3]);
   });
 
   it('supports limit', async () => {

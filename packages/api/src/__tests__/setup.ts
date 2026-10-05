@@ -14,7 +14,10 @@ function makeEvents() {
     getEvents(params: any) {
       const limit = Math.min(params.limit ?? 50, 100);
       let f = [...events];
-      if (params.afterSeq !== undefined) f = f.filter((e: any) => e.seq > params.afterSeq);
+      if (params.afterSeq !== undefined) {
+        f = f.filter((e: any) => e.seq > params.afterSeq);
+        return f.slice(0, limit);
+      }
       return f.slice(-limit);
     },
     clearEvents() { const c = events.length; events.length = 0; return c; },
@@ -93,11 +96,11 @@ export function mockEnv() {
   };
 }
 
-export function createReq() {
+export function createReq(envOverrides: Record<string, unknown> = {}) {
   const app = createApp();
   const { doStub, env } = mockEnv();
   return {
     doStub,
-    req: (path: string, init: RequestInit = {}) => app.request(path, init, env as any),
+    req: (path: string, init: RequestInit = {}) => app.request(path, init, { ...env, ...envOverrides } as any),
   };
 }

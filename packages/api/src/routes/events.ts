@@ -62,15 +62,16 @@ events.get('/:name/sse', async (c) => {
 
   // ?since=<seq> — start from this seq (default: only new events from now)
   const sinceParam = c.req.query('since');
+  const since = sinceParam !== undefined ? parseInt(sinceParam, 10) : NaN;
   let lastSeq: number;
 
-  if (sinceParam !== undefined) {
-    lastSeq = parseInt(sinceParam, 10) || 0;
-  } else {
-    // No since → start from current newest, no history replay
+  if (Number.isNaN(since)) {
+    // Missing or invalid since → start from current newest, no history replay
     const statusRes = await stub.fetch(new Request('http://do/status'));
     const status = await statusRes.json<any>();
     lastSeq = status.lastSeq ?? 0;
+  } else {
+    lastSeq = since;
   }
 
   const stream = new ReadableStream({
