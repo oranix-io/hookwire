@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@hono/zod-openapi": "^1.6.2",
+    "@hookwire/server": "0.1.0",
     "@hookwire/types": "0.1.0",
     "@scalar/hono-api-reference": "^0.12.0",
     "hono": "^4.13.5",

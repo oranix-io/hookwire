@@ -56,7 +56,8 @@ docs(readme): add WebSocket and SSE protocol comparison table
 hookwire/
 ├── packages/
 │   ├── types/    @hookwire/types    Shared TypeScript types
-│   ├── api/      @hookwire/api      Cloudflare Worker + ChannelDO
+│   ├── server/   @hookwire/server   ChannelDO + ingest/events routes (embeddable)
+│   ├── api/      @hookwire/api      Cloudflare Worker hosting @hookwire/server
 │   └── sdk/      @hookwire/sdk      Browser / Node.js client
 ├── scripts/      fire.sh etc.
 └── SPEC.md       Original channel design spec (now outdated)

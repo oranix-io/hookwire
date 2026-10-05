@@ -167,7 +167,8 @@ npm run typecheck
 ```
 packages/
 ├── types/    @hookwire/types    Shared TypeScript types
-├── api/      @hookwire/api      Cloudflare Worker + DO
+├── server/   @hookwire/server   ChannelDO + ingest/events routes (embeddable)
+├── api/      @hookwire/api      Cloudflare Worker hosting @hookwire/server
 └── sdk/      @hookwire/sdk      Browser / Node.js client
 ```
 

@@ -9,7 +9,7 @@
     "build": "echo ok",
     "deploy": "npm run deploy -w @hookwire/api",
     "deploy:version": "npm run deploy:version -w @hookwire/api",
-    "typecheck": "npm run typecheck -w @hookwire/types && npm run typecheck -w @hookwire/sdk && npm run typecheck -w @hookwire/api",
+    "typecheck": "npm run typecheck -w @hookwire/types && npm run typecheck -w @hookwire/sdk && npm run typecheck -w @hookwire/server && npm run typecheck -w @hookwire/api",
     "cf-typegen": "npm run cf-typegen -w @hookwire/api",
     "build:all": "npm run build -w @hookwire/types && npm run build -w @hookwire/sdk",
     "publish:types": "npm run build -w @hookwire/types && npm publish -w @hookwire/types",
