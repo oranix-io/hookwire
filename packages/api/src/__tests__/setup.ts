@@ -51,7 +51,23 @@ function createDOStub() {
 
     if (url.pathname === '/events' && req.method === 'GET') {
       const limit = parseInt(url.searchParams.get('limit') ?? '50');
-      const afterSeq = url.searchParams.get('after_seq') ? parseInt(url.searchParams.get('after_seq')!) : undefined;
+      const afterSeqParam = url.searchParams.get('after_seq');
+      let afterSeq: number | undefined;
+      if (afterSeqParam !== null) {
+        const parsed = Number(afterSeqParam);
+        if (!Number.isInteger(parsed) || parsed < 0) {
+          return new Response(JSON.stringify({ error: 'invalid after_seq: must be a non-negative integer' }), {
+            status: 400, headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        afterSeq = parsed;
+        const minSeq = store.events.length ? Math.min(...store.events.map((e: any) => e.seq)) : null;
+        if (minSeq !== null && afterSeq < minSeq - 1) {
+          return new Response(JSON.stringify({ error: 'after_seq precedes retained window; resync from min_seq', min_seq: minSeq }), {
+            status: 410, headers: { 'Content-Type': 'application/json' },
+          });
+        }
+      }
       const events = store.getEvents({ limit, afterSeq, includeBody: true });
       return new Response(JSON.stringify({ events }), { headers: { 'Content-Type': 'application/json' } });
     }

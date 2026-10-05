@@ -75,13 +75,15 @@ Both protocols support `?since=` for replaying missed events:
 
 - Server sends history events first, then switches to real-time.
 - SDK automatically appends `?since=` on reconnect — no missed events.
-- Retention: 10,000 events / 7 days. Events outside this window are lost.
+- Retention: 10,000 events / 7 days by default. Events outside this window are lost.
+  Override per deployment with the `MAX_EVENTS` and `RETENTION_MS` vars in `wrangler.jsonc`.
 
 ### Ingest auth (optional)
 
 Set the `INGEST_SECRET` env var (`wrangler secret put INGEST_SECRET`) to require
 senders to present it via the `x-hookwire-secret` header. When unset, ingest is
-open — the channel name is the only credential.
+open — the channel name is the only credential. The same secret also protects
+`DELETE /ch/:name/events`; when unset, delete remains open.
 
 ## API
 

@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { channelRateLimit } from '../middleware/rate-limit.js';
+import { timingSafeEqual } from '../lib/auth.js';
 
 type Bindings = { CHANNEL_DO: DurableObjectNamespace; INGEST_SECRET?: string };
 
@@ -22,7 +23,7 @@ for (const method of METHODS) {
     // Optional shared-secret auth: when INGEST_SECRET is set, senders must
     // present it via the x-hookwire-secret header.
     const secret = c.env.INGEST_SECRET;
-    if (secret && c.req.header('x-hookwire-secret') !== secret) {
+    if (secret && !timingSafeEqual(c.req.header('x-hookwire-secret'), secret)) {
       return c.json({ ok: false, error: { code: 'unauthorized', message: 'Invalid or missing ingest secret' } }, 401);
     }
 

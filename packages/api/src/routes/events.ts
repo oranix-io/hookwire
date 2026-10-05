@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
+import { timingSafeEqual } from '../lib/auth.js';
 
-type Bindings = { CHANNEL_DO: DurableObjectNamespace };
+type Bindings = { CHANNEL_DO: DurableObjectNamespace; INGEST_SECRET?: string };
 
 const events = new Hono<{ Bindings: Bindings }>();
 
@@ -8,11 +9,24 @@ function getStub(c: any, name: string): DurableObjectStub {
   return c.env.CHANNEL_DO.get(c.env.CHANNEL_DO.idFromName(name));
 }
 
+/** Validate a seq cursor param; returns an error message or null. */
+function seqParamError(v: string | undefined): string | null {
+  if (v === undefined) return null;
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 0 ? null : 'must be a non-negative integer';
+}
+
+function badRequest(c: any, param: string) {
+  return c.json({ ok: false, error: { code: 'bad_request', message: `Invalid ${param}: must be a non-negative integer` } }, 400);
+}
+
 // ── GET /ch/:name/events ──────────────────────────────────
 
 events.get('/:name/events', async (c) => {
   const name = c.req.param('name');
   const q = c.req.query();
+
+  if (seqParamError(q.after_seq)) return badRequest(c, 'after_seq');
 
   const params = new URLSearchParams();
   if (q.limit) params.set('limit', q.limit);
@@ -23,6 +37,9 @@ events.get('/:name/events', async (c) => {
   const doRes = await stub.fetch(new Request(`http://do/events?${params.toString()}`));
   const body = await doRes.json<any>();
 
+  // Forward DO errors (400 invalid cursor, 410 evicted-retention gap) verbatim.
+  if (!doRes.ok) return c.json(body, doRes.status as any);
+
   return c.json({ ok: true, channel: name, events: body.events });
 });
 
@@ -30,6 +47,14 @@ events.get('/:name/events', async (c) => {
 
 events.delete('/:name/events', async (c) => {
   const name = c.req.param('name');
+
+  // Optional shared-secret auth: when INGEST_SECRET is set, clearing events
+  // requires the same x-hookwire-secret header as ingest.
+  const secret = c.env.INGEST_SECRET;
+  if (secret && !timingSafeEqual(c.req.header('x-hookwire-secret'), secret)) {
+    return c.json({ ok: false, error: { code: 'unauthorized', message: 'Invalid or missing ingest secret' } }, 401);
+  }
+
   const stub = getStub(c, name);
   const doRes = await stub.fetch(new Request('http://do/events', { method: 'DELETE' }));
   const body = await doRes.json<any>();
@@ -44,6 +69,8 @@ events.get('/:name/ws', async (c) => {
   if (c.req.header('Upgrade') !== 'websocket') {
     return c.json({ ok: false, error: { code: 'bad_request', message: 'Expected WebSocket upgrade' } }, 400);
   }
+
+  if (seqParamError(c.req.query('since'))) return badRequest(c, 'since');
 
   const stub = getStub(c, name);
 
@@ -62,7 +89,8 @@ events.get('/:name/sse', async (c) => {
 
   // ?since=<seq> — start from this seq (default: only new events from now)
   const sinceParam = c.req.query('since');
-  const since = sinceParam !== undefined ? parseInt(sinceParam, 10) : NaN;
+  if (seqParamError(sinceParam)) return badRequest(c, 'since');
+  const since = sinceParam !== undefined ? Number(sinceParam) : NaN;
   let lastSeq: number;
 
   if (Number.isNaN(since)) {
